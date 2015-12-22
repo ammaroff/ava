@@ -17,6 +17,7 @@ if (debug.enabled) {
 	require('time-require');
 }
 
+var logUpdate = require('log-update');
 var arrify = require('arrify');
 var meow = require('meow');
 var updateNotifier = require('update-notifier');
@@ -70,8 +71,6 @@ if (cli.flags.init) {
 
 if (cli.flags.tap) {
 	console.log(tap.start());
-} else {
-	log.write();
 }
 
 var api = new Api(cli.input, {
@@ -80,6 +79,9 @@ var api = new Api(cli.input, {
 	require: arrify(cli.flags.require)
 });
 
+var passCount = 0;
+var failCount = 0;
+
 api.on('test', function (test) {
 	if (cli.flags.tap) {
 		console.log(tap.test(test));
@@ -87,15 +89,22 @@ api.on('test', function (test) {
 	}
 
 	if (test.error) {
-		log.error(test.title, chalk.red(test.error.message));
+		failCount++;
 	} else {
-		// don't log it if there's only one file and one anonymous test
-		if (api.fileCount === 1 && api.testCount === 1 && test.title === '[anonymous]') {
-			return;
-		}
-
-		log.test(test);
+		passCount++;
 	}
+
+	var status = '\n';
+
+	if (passCount > 0) {
+		status += '  ' + chalk.green(passCount + ' passed');
+	}
+
+	if (failCount > 0) {
+		status += '  ' + chalk.red(failCount + ' failed');
+	}
+
+	logUpdate.stderr(status);
 });
 
 api.on('error', function (data) {
@@ -103,8 +112,6 @@ api.on('error', function (data) {
 		console.log(tap.unhandledError(data));
 		return;
 	}
-
-	log.unhandledError(data.type, data.file, data);
 });
 
 api.run()
@@ -112,11 +119,22 @@ api.run()
 		if (cli.flags.tap) {
 			console.log(tap.finish(api.passCount, api.failCount, api.rejectionCount, api.exceptionCount));
 		} else {
-			log.write();
-			log.report(api.passCount, api.failCount, api.rejectionCount, api.exceptionCount);
+			logUpdate.stderr.done();
 			log.write();
 
-			if (api.failCount > 0) {
+			if (api.rejectionCount > 0) {
+				log.writelpad(chalk.red(api.rejectionCount + ' rejections'));
+			}
+
+			if (api.exceptionCount > 0) {
+				log.writelpad(chalk.red(api.exceptionCount + ' exceptions'));
+			}
+
+			if (api.rejectionCount > 0 || api.exceptionCount > 0) {
+				log.write();
+			}
+
+			if (api.failCount > 0 || api.rejectionCount > 0 || api.exceptionCount > 0) {
 				log.errors(api.errors);
 			}
 		}
